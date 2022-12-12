@@ -181,11 +181,7 @@ def get_maximum_item(my_monkeys):
     for m in my_monkeys:
         maximum = max([maximum] + m.items)
     
-    product = 1
-    for i in range(1, maximum + 1):
-        product = product * i
-        
-    return product
+    return maximum * maximum + 2 * maximum
 
 
 def get_next_level_bounded_by_three(level):
