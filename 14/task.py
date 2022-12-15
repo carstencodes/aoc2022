@@ -168,6 +168,30 @@ class CaveMap:
                 self.__items[row].append(glyph)
                 
         self.__map.clear()
+        
+    def build_floor(self) -> None:
+        RANGE = self.__offset
+        
+        empty_row = [Glyph.Empty for _ in range(0, len(self.__items[0]))]
+        rocky_row = [Glyph.Rock for _ in range(0, len(self.__items[0]))]
+        self.__items.append(empty_row[:])
+        self.__items.append(rocky_row[:])
+        
+        for i in range(0, len(self.__items) - 1):
+            row = self.__items[i]
+            offset = RANGE
+            while offset > 0:
+                row.insert(0, Glyph.Empty)
+                row.append(Glyph.Empty)
+                offset = offset - 1
+        
+        row = self.__items[-1]        
+        offset = RANGE
+        while offset > 0:
+            row.insert(0, Glyph.Rock)
+            row.append(Glyph.Rock)
+            offset = offset - 1
+            self.__offset = self.__offset - 1
     
     def draw(self) -> None:
         print(repr(self))
@@ -224,7 +248,7 @@ class CaveMap:
         mapping: dict[tuple[int, int], SandNode] = {}
         
         row = len(self.__items) - 1
-        while row >= 0:
+        while row >= start[1]:
             for col in range(0, len(self.__items[row])):
                 coord = (col, row)
                 down_coord = (col, row + 1)
@@ -261,6 +285,7 @@ def build_map(value: str) -> CaveMap:
             collection.append(index)
         result.add_rock(collection)
     result.build()
+    result.build_floor()
     return result
 
 
@@ -459,5 +484,5 @@ PUZZLE = """497,166 -> 497,165 -> 497,166 -> 499,166 -> 499,160 -> 499,166 -> 50
 520,43 -> 525,43
 505,65 -> 505,58 -> 505,65 -> 507,65 -> 507,55 -> 507,65 -> 509,65 -> 509,60 -> 509,65 -> 511,65 -> 511,56 -> 511,65 -> 513,65 -> 513,62 -> 513,65"""
 
-#run(SAMPLE, (500, 0))
-run(PUZZLE, (500, 0))
+#run(SAMPLE, (500, -1))
+run(PUZZLE, (500, -1))
