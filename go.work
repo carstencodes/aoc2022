@@ -1,0 +1,8 @@
+go 1.18
+
+use (
+	./06
+	./12.go.defunct
+	./13.go.defunct
+	./15
+)
