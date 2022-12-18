@@ -1,11 +1,11 @@
+from collections import defaultdict
 from enum import IntEnum, auto
 from functools import cached_property
-from math import fabs
 
 
 class State(IntEnum):
     Empty = auto()
-    InRange = auto()
+    NoBeacon = auto()
     Sensor = auto()
     Beacon = auto()
 
@@ -13,7 +13,7 @@ class State(IntEnum):
     def __str__(self) -> str:
         if self == State.Empty:
             return "."
-        if self == State.InRange:
+        if self == State.NoBeacon:
             return "#"
         if self == State.Sensor:
             return "S"
@@ -40,30 +40,16 @@ class Measurement:
     def get_states_for_line(self, y: int) -> list[State]:
         result = []
         
-        min_range_x = self.distance + 1
-        max_range_x = self.distance - 1
-        
-        direction = + 1
-                
-        for i in range(0, y + 1):
-            min_range_x = min_range_x - direction
-            max_range_x = max_range_x + direction
-            if i == self.distance:
-                direction = - 1
-                
-        for x, _ in enumerate(range(0, self.distance * 2 + 1)):
-            x0 = self.min_x + x
-            y0 = self.min_y + y
-            
+        for x, _ in enumerate(range(self.min_x, self.max_x + 1)):
             state = State.Empty
             
-            if x >= min_range_x and x <= max_range_x:
-                state = State.InRange
+            if Measurement.calculate_distance(self.sensor, (y, x)) <= self.distance:
+                state = State.NoBeacon
             
-            if (y0, x0) == self.__beacon:
+            if (y, x) == self.__beacon:
                 state = State.Beacon
                 
-            if (y0, x0) == self.__sensor:
+            if (y, x) == self.__sensor:
                 state = State.Sensor
             
             result.append(state)
@@ -100,10 +86,6 @@ class Measurement:
     
     def __repr__(self) -> str:
         state_repr = ""
-        #for line in self.states:
-        #    for s in line:
-        #        state_repr += str(s)
-        #    state_repr += "\n"
         
         return f"Sensor: ({self.__sensor[1]}, {self.__sensor[0]})\nBeacon: ({self.__beacon[1]}, {self.__beacon[0]})\nDistance: {self.distance}\n{state_repr}"
 
@@ -112,59 +94,72 @@ class Measurement:
         delta_y = to_point[0] - from_point[0]
         delta_x = to_point[1] - from_point[1]
         
-        delta_y = int(fabs(delta_y))
-        delta_x = int(fabs(delta_x))
+        delta_y = abs(delta_y)
+        delta_x = abs(delta_x)
         
         return delta_x + delta_y
     
 
-class CaveMap:
+class CaveMap(defaultdict[tuple[int, int], State]):
     def __init__(self, caves: list[Measurement]) -> None:
-        self.__caves = caves or []
+        super().__init__(CaveMap.__empty_cell)
+        for m in caves:
+            self[m.beacon] = State.Beacon
+            self[m.sensor] = State.Sensor
+        self.__caves = caves[:]
         
     @cached_property
     def min_x(self) -> int:
-        return min([x.min_x for x in self.__caves])
+        return min([p[1] for p in self.keys()])
     
     @cached_property
     def min_y(self) -> int:
-        return min([x.min_y for x in self.__caves])
+        return min([p[0] for p in self.keys()])
     
     @cached_property
     def max_x(self) -> int:
-        return max([x.max_x for x in self.__caves])
+        return max([p[1] for p in self.keys()])
     
     @cached_property
     def max_y(self) -> int:
-        return max([x.max_y for x in self.__caves])
+        return max([p[0] for p in self.keys()])
+    
+    @staticmethod
+    def __empty_cell() -> State:
+        return State.Empty
                     
     def get_line(self, line: int) -> list[State]:
-        caves = [c for c in self.__caves if line >= c.min_y and line <= c.max_y]
+        y = line
+        result = []
         
-        min_x = 0
-        max_x = 0
-        
-        for cave in caves:
-            min_x = min(min_x, cave.min_x)
-            max_x = max(max_x, cave.max_x)
+        for cave in self.__caves:
+            if (cave.min_y > line or cave.max_y < line):
+                continue
             
-        dx = max_x - min_x + 1
-        
-        result = [State.Empty for _ in range(0, dx)]
-        
-        for cave in caves:
-            line_translated = line - cave.min_y
-            row = cave.get_states_for_line(line_translated)
-            x_offset = cave.min_x
-            for x, state in enumerate(row):
-                x0 = x + x_offset
-                if result[x0] == State.Empty:
-                    result[x0] = state
+            for x in range(cave.min_x, cave.max_x + 1):
+                p = (y, x)
+
+                state = self.get(p) or State.Empty
+            
+                if state == State.Empty:
+                    positional_distance = Measurement.calculate_distance(p, cave.sensor)
+                    if (positional_distance <= cave.distance):
+                        state = State.NoBeacon
+                    
+                self[p] = state
+                
+        for x in range(self.min_x, self.max_x + 1):
+            position = (y, x)
+            if position not in self:
+                continue
+            state = self.get((y, x))
+            if state == State.NoBeacon:
+                result.append(state)
             
         return result
     
     def __repr__(self) -> str:
-        return f"X: {self.min_x} -> {self.max_x} x Y: {self.min_y} -> {self.max_y}"
+        return f"[{len(self.__caves)}]  X: {self.min_x} -> {self.max_x} x Y: {self.min_y} -> {self.max_y}"
 
 
 def parse_point(text: str) -> tuple[int, int]:
@@ -177,23 +172,25 @@ def parse_point(text: str) -> tuple[int, int]:
 def run(text: str, line_of_interest: int) -> None:
     measurements = []
     
+    caves = 0
     for line in text.splitlines():
+        caves = caves + 1
         data_line = line.removeprefix("Sensor at ")
         data_line = data_line.replace(": closest beacon is at ", "|")
         sensor_line, beacon_line = tuple(data_line.split("|"))
-        sensor, beacon = (parse_point(sensor_line),parse_point(beacon_line))
+        sensor, beacon = (parse_point(sensor_line), parse_point(beacon_line))
         m = Measurement(sensor, beacon)
-        print(repr(m))
         
         measurements.append(m)
+        print(f"Cave {caves} | X: {m.min_x} -> {m.max_x} = {m.max_x + 1 - m.min_x} | Y: {m.min_y} -> {m.max_y} = {m.max_y + 1 - m.min_y}")
         
     cave_map = CaveMap(measurements)
-    print(repr(cave_map))
     
     content = cave_map.get_line(line_of_interest)
-    print (len(content))
-    in_ranges = [1 for s in content if s == State.InRange]
-    sum_of_in_ranges = sum(in_ranges)
+    sum_of_in_ranges = 0
+    for item in content:
+        if item == State.NoBeacon:
+            sum_of_in_ranges = sum_of_in_ranges + 1
     
     print(sum_of_in_ranges)
 
@@ -237,5 +234,5 @@ Sensor at x=3009341, y=3849969: closest beacon is at x=3528871, y=3361675
 Sensor at x=1926292, y=193430: closest beacon is at x=1884716, y=-881769
 Sensor at x=3028318, y=3091480: closest beacon is at x=3528871, y=3361675"""
 
-#run(SAMPLE, 10)
+run(SAMPLE, 10)
 run(PUZZLE, 20000)
