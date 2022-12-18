@@ -4,5 +4,5 @@ use (
 	./06
 	./12.go.defunct
 	./13.go.defunct
-	./15
+	./15.go.defunct
 )
